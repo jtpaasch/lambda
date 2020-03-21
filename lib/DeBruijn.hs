@@ -48,10 +48,9 @@ mkFree name = Free name
 mkIdx :: Int -> Term
 mkIdx i = Idx i
 
-{- Constructs an abstraction term.
-
-Example: 'mkAbstr "x" t' abstracts the free variable "x" in term 't'.
-The result converts 'x' to de Bruijn indices in 't'. -}
+{- Constructs an abstraction term. For example, 'mkAbstr "x" t' abstracts 
+the free variable "x" in term 't'. The result converts 'x' to de Bruijn 
+indices in 't'. -}
 mkAbstr :: Name -> Term -> Term
 mkAbstr name term = Abstr $ indices 1 name term
 
@@ -59,10 +58,8 @@ mkAbstr name term = Abstr $ indices 1 name term
 mkApp :: Term -> Term -> Term
 mkApp term term' = App term term'
 
-{- Converts a term into a de Bruijn indexed version. 
-
-Example: 'indices 2 "x" t' replaces all free variables "x" 
-at depth 2 in term 't'. -}
+{- Converts a term into a de Bruijn indexed version. For example, 
+'indices 1 "x" t' replaces free variables "x" in term 't', at depth 1. -}
 indices :: Int -> Name -> Term -> Term
 indices depth name term =
   case term of
@@ -76,10 +73,8 @@ indices depth name term =
     App term' term'' ->
       App (indices depth name term') (indices depth name term'')
 
-{- Substitutes one term for another.
-
-Example: 'subst 2 t1 t2' substituse the term 't1' for every 
-de Bruijn index 2 in the term 't2'. -}
+{- Substitutes one term for another. For example, 'subst 1 t1 t2' 
+substituse the term 't1' in the term 't2', at depth 1. -}
 subst :: Int -> Term -> Term -> Term
 subst idx term term' =
   case term' of
