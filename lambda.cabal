@@ -12,7 +12,7 @@ extra-source-files:  README.md
 
 library
   exposed-modules:     Untyped.Naive, Untyped.Lambda, Untyped.DeBruijn,
-                       Typed.Naive
+                       Typed.Naive, Typed.Lambda
   -- other-modules:
   -- other-extensions:
   build-depends:       base ^>=4.13.0.0, containers
