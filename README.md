@@ -1,6 +1,6 @@
 # `lambda`
 
-A simple lambda calculus interpreter.
+Some simple lambda calculus interpreters.
 
 
 ## Usage
