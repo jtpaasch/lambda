@@ -38,7 +38,7 @@ data Names = Names {
 initialize :: unit -> Names
 initialize _ = Names { counter = 0, name = "a0" }
 
-{- | Freshen the name in the 'Fresh' container. -}
+{- | Freshen the name in the 'Names' container. -}
 freshen :: Names -> Names
 freshen names =
   let new_counter = (counter names) + 1
@@ -128,25 +128,24 @@ rename ctx names old new term =
           (ctx'', body') = rename ctx' names' name' new' body
           (_, body'') = rename ctx'' names' old new body'
       in (ctx'', Abstr new' binding body'')
-    App term' term'' ->
-      let (ctx', term''') = rename ctx names old new term'
-          (ctx'', term'''') = rename ctx' names old new term''
-      in (ctx'', App term''' term'''')
+    App term1 term2 ->
+      let (ctx', term1') = rename ctx names old new term1
+          (ctx'', term2') = rename ctx' names old new term2
+      in (ctx'', App term1' term2')
 
 {- | Substitute a term for a name (bound to a type) in another term. 
 For example, 'subst ctx "x" binding term1 term2' will put 'term1' in
 the place of every variable '"x"' (with type 'binding') in 'term2'. -} 
-subst :: Context -> Name -> Type -> Term -> Term -> Term
-subst ctx name binding term term' =
+subst :: Name -> Type -> Term -> Term -> Term
+subst name binding term term' =
   case term' of
     Var name'
       | name == name' -> term
       | otherwise -> term'
     Abstr name' binding' body ->
-      Abstr name' binding' (subst ctx name binding term body)
-    App term'' term''' ->
-      App (subst ctx name binding term term'') 
-          (subst ctx name binding term term''')
+      Abstr name' binding' (subst name binding term body)
+    App term1 term2 ->
+      App (subst name binding term term1) (subst name binding term term2)
 
 {- | (Left-most) reduce a term one time. -}
 reduceOnce :: Context -> Term -> Either Error Term
@@ -156,7 +155,7 @@ reduceOnce ctx term =
     Right _ ->
       case term of
         App (Abstr name binding body) term' ->
-          Right $ subst ctx name binding term' body
+          Right $ subst name binding term' body
         _ -> Right term
 
 {- | Reduce a term repeatedly until no more reductions can be done. -}
