@@ -1,4 +1,4 @@
-module DeBruijn (
+module Untyped.DeBruijn (
     Name
   , mkFree
   , mkAbstr

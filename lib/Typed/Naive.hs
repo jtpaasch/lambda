@@ -1,4 +1,4 @@
-module Simple where
+module Typed.Naive where
 
 {- | A simply typed lambda calculus interpreter.
 

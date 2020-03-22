@@ -1,4 +1,4 @@
-module Lambda where
+module Untyped.Lambda where
 
 {- | A lambda calculus interpreter.
 
