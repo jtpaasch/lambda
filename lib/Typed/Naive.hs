@@ -96,19 +96,19 @@ getType ctx term =
         _ -> Left $ NotAbstr term
 
 {- | Substitute a term for a name (bound to a type) in another term. 
-For example, 'subst ctx "x" binding term1 term2' will put 'term1' in
+For example, 'subst "x" binding term1 term2' will put 'term1' in
 the place of every variable '"x"' (with type 'binding') in 'term2'. -} 
-subst :: Context -> Name -> Type -> Term -> Term -> Term
-subst ctx name binding term term' =
+subst :: Name -> Type -> Term -> Term -> Term
+subst name binding term term' =
   case term' of
     Var name'
       | name == name' -> term
       | otherwise -> term'
     Abstr name' binding' body ->
-      Abstr name' binding' (subst ctx name binding term body)
+      Abstr name' binding' (subst name binding term body)
     App term'' term''' ->
-      App (subst ctx name binding term term'') 
-          (subst ctx name binding term term''')
+      App (subst name binding term term'') 
+          (subst name binding term term''')
 
 {- | (Left-most) reduce a term one time. -}
 reduceOnce :: Context -> Term -> Either Error Term

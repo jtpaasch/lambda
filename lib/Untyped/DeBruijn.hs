@@ -59,7 +59,8 @@ mkApp :: Term -> Term -> Term
 mkApp term term' = App term term'
 
 {- Converts a term into a de Bruijn indexed version. For example, 
-'indices 1 "x" t' replaces free variables "x" in term 't', at depth 1. -}
+'indices 1 "x" t' recursively replaces free variables "x" in term 't',
+starting at depth 1. -}
 indices :: Int -> Name -> Term -> Term
 indices depth name term =
   case term of
@@ -67,11 +68,11 @@ indices depth name term =
       | name == name' -> Idx depth
       | otherwise -> term
     Idx _ -> term
-    Abstr term' ->
+    Abstr body ->
       let depth' = depth + 1
-      in Abstr $ indices depth' name term'
-    App term' term'' ->
-      App (indices depth name term') (indices depth name term'')
+      in Abstr $ indices depth' name body
+    App term1 term2 ->
+      App (indices depth name term1) (indices depth name term2)
 
 {- Substitutes one term for another. For example, 'subst 1 t1 t2' 
 substituse the term 't1' in the term 't2', at depth 1. -}
@@ -82,15 +83,15 @@ subst idx term term' =
     Idx i
       | i == idx -> term
       | otherwise -> term'
-    Abstr term'' -> Abstr $ subst (idx + 1) term term''
-    App term'' term''' ->
-      App (subst idx term term'') (subst idx term term''')
+    Abstr body -> Abstr $ subst (idx + 1) term body
+    App term1 term2 ->
+      App (subst idx term term1) (subst idx term term2)
 
 {- (Left-most) reduce a term one time. -}
 reduceOnce :: Term -> Term
 reduceOnce term =
   case term of
-    App (Abstr term') term'' -> subst 1 term'' (term')
+    App (Abstr body) arg -> subst 1 arg (body)
     _ -> term
 
 {- Reduce a term repeatedly until no more reductions can be done. -}
@@ -98,5 +99,5 @@ reduce :: Term -> Term
 reduce term =
   let result = reduceOnce term
   in case result of
-    App (Abstr term') term'' -> reduce result
+    App (Abstr _) _ -> reduce result
     _ -> result
