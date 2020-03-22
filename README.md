@@ -5,9 +5,7 @@ A simple lambda calculus interpreter.
 
 ## Usage
 
-See the help:
-
-    lambda --help
+See the examples in the headers of each library module.
 
 
 ## Build
@@ -37,13 +35,23 @@ To build the library:
 
     cabal new-build
 
-To import a library module into GHCi:
+To import a particular library module into GHCi:
 
     Prelude> :l lib/Lambda.hs
+
+Then experiment with its functions (see the header of `lib/Lambda.hs`
+for some examples).
 
 To load all libraries into GHCi:
 
     cabal repl Lambda
+
+Then import them qualified:
+
+    Prelude>import qualified Naive as N
+    Prelude N>import qualified Lambda as L
+    Prelude N L>import qualified DeBruijn an B
+    Prelude N L B>import qualified Simple as S
 
 To clean:
 
