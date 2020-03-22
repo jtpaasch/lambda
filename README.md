@@ -37,10 +37,9 @@ To build the library:
 
 To import a particular library module into GHCi:
 
-    Prelude> :l lib/Lambda.hs
+    Prelude> :l lib/Untyped/Lambda.hs
 
-Then experiment with its functions (see the header of `lib/Lambda.hs`
-for some examples).
+Then experiment with its functions (see the file's header for examples).
 
 To load all libraries into GHCi:
 
