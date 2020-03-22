@@ -44,14 +44,7 @@ for some examples).
 
 To load all libraries into GHCi:
 
-    cabal repl Lambda
-
-Then import them qualified:
-
-    Prelude>import qualified Naive as N
-    Prelude N>import qualified Lambda as L
-    Prelude N L>import qualified DeBruijn an B
-    Prelude N L B>import qualified Simple as S
+    cabal repl lambda
 
 To clean:
 
