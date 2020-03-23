@@ -1,10 +1,15 @@
 module Typed.Types where
 
+{- This module provides finite base types, records, and options. -}
+
 import Data.List (intercalate)
 import qualified Data.Set as Set
 
 type Name = String
 type Value = String
+
+
+-- BASE TYPES ---------------------------------------
 
 data BaseType = BaseType {
     name :: Name
@@ -27,6 +32,9 @@ mkBaseType name = BaseType { name = name }
 mkBaseTerm :: Value -> BaseType -> BaseTerm
 mkBaseTerm value binding =
   BaseTerm { value = value, termBinding = binding }
+
+
+-- RECORDS ------------------------------------------
 
 data Label = Label {
     label :: Name,
@@ -79,6 +87,9 @@ mkRecordTerm :: [Field] -> RecordType -> RecordTerm
 mkRecordTerm fields binding = 
   RecordTerm { fields = Set.fromList fields, recordBinding = binding }
 
+
+-- OPTIONS ------------------------------------------
+
 data OptionType = OptionType {
     optionBinding :: Type
   } deriving (Eq, Ord)
@@ -110,6 +121,9 @@ mkOptionTerm :: Selection -> OptionType -> OptionTerm
 mkOptionTerm option binding = 
   OptionTerm { selection = option, selectionBinding = binding }
 
+
+-- TERMS/TYPES --------------------------------------
+
 data Type =
     BaseT BaseType
   | RecordT RecordType
@@ -131,6 +145,9 @@ instance Show Term where
   show (Base t) = show t
   show (Record t) = show t
   show (Option t) = show t
+
+
+-- TYPE CHECKING ------------------------------------
 
 getType :: Term -> Type
 getType term =
