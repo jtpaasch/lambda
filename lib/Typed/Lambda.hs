@@ -128,13 +128,13 @@ rename ctx names old new term =
           (ctx'', body') = rename ctx' names' name' new' body
           (_, body'') = rename ctx'' names' old new body'
       in (ctx'', Abstr new' binding body'')
-    App term1 term2 ->
-      let (ctx', term1') = rename ctx names old new term1
-          (ctx'', term2') = rename ctx' names old new term2
-      in (ctx'', App term1' term2')
+    App func arg ->
+      let (ctx', func') = rename ctx names old new func
+          (ctx'', arg') = rename ctx' names old new arg
+      in (ctx'', App func' arg')
 
 {- | Substitute a term for a name (bound to a type) in another term. 
-For example, 'subst ctx "x" binding term1 term2' will put 'term1' in
+For example, 'subst "x" binding term1 term2' will put 'term1' in
 the place of every variable '"x"' (with type 'binding') in 'term2'. -} 
 subst :: Name -> Type -> Term -> Term -> Term
 subst name binding term term' =
@@ -144,8 +144,8 @@ subst name binding term term' =
       | otherwise -> term'
     Abstr name' binding' body ->
       Abstr name' binding' (subst name binding term body)
-    App term1 term2 ->
-      App (subst name binding term term1) (subst name binding term term2)
+    App func arg ->
+      App (subst name binding term func) (subst name binding term arg)
 
 {- | (Left-most) reduce a term one time. -}
 reduceOnce :: Context -> Term -> Either Error Term
@@ -166,7 +166,7 @@ reduceFixpoint ctx term =
     Left err -> Left err
     Right term' ->
       case term' of
-        App (Abstr name binding body) term'' -> reduceFixpoint ctx term'
+        App (Abstr _ _ _) _ -> reduceFixpoint ctx term'
         _ -> Right term'
 
 {- | Rename bound variables, then reduce. -}

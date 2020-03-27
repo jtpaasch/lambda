@@ -77,22 +77,23 @@ instance Show Error where
     "has type '" ++ (show binding) ++ "' " ++
     "but must have type '" ++ (show binding') ++ "'" 
 
-{- Constructs a free variable term. -}
+{- | Constructs a free variable term. -}
 mkFree :: Name -> Term
 mkFree name = Free name
 
-{- Constructs a de Brujin index. -}
+{- | Constructs a de Bruijn index. -}
 mkIdx :: Index -> Term
 mkIdx idx = Idx idx
 
-{- Constructs an abstraction term. For example, 'mkAbstr "x" t' abstracts
+{- | Constructs an abstraction term. For example, 'mkAbstr "x" t' abstracts
 the free variable "x" in the term 't'. the result converts 'x' to de Bruijn
 indices in 't'. -}
 mkAbstr :: Name -> Type -> Term -> Term
 mkAbstr name binding term = Abstr binding $ indices 1 name term
 
-{- Constructs an application term. -}
-mkApp term term' = App term term'
+{- | Constructs an application term. -}
+mkApp :: Term -> Term -> Term
+mkApp func arg = App func arg
 
 {- | The context maps names to types. -}
 type Context = Map.Map Name Type
@@ -108,7 +109,7 @@ getNameBinding ctx name = Map.lookup name ctx
 {- | A stack maps de Bruijn indices to types. -}
 type Stack = Map.Map Index Type
 
-{- | Constructs an empty 'Stack'. -}
+{- | An empty 'Stack'. -}
 initStack :: Stack
 initStack = Map.fromList []
 
@@ -191,7 +192,7 @@ reduceOnce ctx term =
     Left err -> Left err
     Right _ ->
       case term of
-        App (Abstr binding body) arg ->
+        App (Abstr _ body) arg ->
           Right $ subst 1 arg body
         _ -> Right term
 

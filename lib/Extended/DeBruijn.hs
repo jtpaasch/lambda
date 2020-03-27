@@ -1,10 +1,10 @@
-module Typed.Naive where
+module Typed.DeBruijn where
 
-{- A naive interpreter for extended typed lambda calculus.
+{- An interpreter for extended typed lambda calculus.
 
-By "naive," I mean it does not avoid variable capture.
+This version uses de Bruijn indices.
 
-This lambda calculus allows custom base types, options, and records,
+This calculus allows custom base types, options, and records,
 as well as the usual free variables, abstraction, and application.
 
 To create custom types, there are two steps:
@@ -25,6 +25,7 @@ import qualified Data.Set as Set
 {- | For convenience/clarity. -}
 type Name = String
 type Value = String
+type Index = Int
 
 
 -- BASE TYPES ---------------------------------------
@@ -119,11 +120,11 @@ instance Show Field where
 mkLabel :: Name -> Type -> Label
 mkLabel name binding = Label { label = name, labelBinding = binding }
 
-{- Creates a field with the given term and label -}
+{- | Creates a field with the given term and label -}
 mkField :: Term -> Label -> Field
 mkField t l = Field { field = t, fieldBinding = l }
 
-{- | A record type is a set of labels. -}
+{- A record type is a set of labels. -}
 data RecordType = RecordType {
     labels :: Set.Set Label
   } deriving (Eq, Ord)
@@ -178,8 +179,9 @@ data Term =
     Base BaseTerm
   | Record RecordTerm
   | Option OptionTerm
-  | Var Name
-  | Abstr Name Type Term
+  | Free Name
+  | Idx Index
+  | Abstr Type Term
   | App Term Term
   deriving (Eq, Ord)
 
@@ -187,10 +189,27 @@ instance Show Term where
   show (Base term) = show term
   show (Record term) = show term
   show (Option term) = show term
-  show (Var name) = show name
-  show (Abstr name bind term) = 
-    "λ" ++ name ++ " : " ++ (show bind) ++ ".(" ++ (show term) ++ ")"
+  show (Free name) = show name
+  show (Idx idx) = show idx
+  show (Abstr bind term) = 
+    "λ : " ++ (show bind) ++ ".(" ++ (show term) ++ ")"
   show (App t1 t2) = "(" ++ (show t1) ++ ") " ++ (show t2)
+
+{- | Constructs a free variable term. -}
+mkFree :: Name -> Term
+mkFree name = Free name
+
+{- | Constructs a de Bruijn index. -}
+mkIdx :: Index -> Term
+mkIdx idx = Idx idx
+
+{- | Constructs an abstraction term. -}
+mkAbstr :: Name -> Type -> Term -> Term
+mkAbstr name binding term = Abstr binding $ indices 1 name term
+
+{- | Constructs an application term. -}
+mkApp :: Term -> Term -> Term
+mkApp func arg = App func arg
 
 {- | A context is a mapping of names to types. -}
 type Context = Map.Map Name Type
@@ -209,6 +228,23 @@ mkCtx entries = Map.fromList entries
 {- | Find the type bound to a name in the context (if any). -}
 getCtxBinding :: Context -> Name -> Maybe Type
 getCtxBinding ctx name = Map.lookup name ctx
+
+{- A stack maps de Bruijn indices to types. -}
+type Stack = Map.Map Index Type
+
+{- | An empty 'Stack'. -}
+initStack :: Stack
+initStack = Map.fromList []
+
+{- | Find the type bound to a given de Bruijn index (if any). -}
+getIdxBinding :: Stack -> Index -> Maybe Type
+getIdxBinding stack idx = Map.lookup idx stack
+
+{- | Pushes a new de Bruijn index (and its type) onto the stack. -}
+pushIdxBinding :: Stack -> Type -> Stack
+pushIdxBinding stack binding =
+  let stack' = Map.mapKeys (\k -> k + 1) stack
+  in Map.insert 1 binding stack'
 
 
 -- TYPE CHECKING ------------------------------------
@@ -238,9 +274,9 @@ instance Show TypeError where
     "but must have type '" ++ (show binding') ++ "' " ++
     "in: " ++ (show term)
 
-{- | Given a context and a term, derive its type. -}
-getType :: Context -> Term -> Either TypeError Type
-getType ctx term =
+{- | Derive a term's type, given a context and an initial empty stack. -}
+getType :: Context -> Stack -> Term -> Either TypeError Type
+getType ctx stack term =
   case term of
     Base t -> Right $ BaseT (termBinding t)
     Option t -> 
@@ -248,7 +284,7 @@ getType ctx term =
       in case (selection t) of 
         None -> Right $ OptionT binding
         Precisely t' ->
-          case getType ctx t' of
+          case getType ctx stack t' of
             Left e -> Left e
             Right subterm_type -> 
               case subterm_type == optionBinding binding of
@@ -262,65 +298,105 @@ getType ctx term =
       in case fieldLabels == bindingLabels of
         True -> Right $ RecordT binding
         False -> Left $ WrongFields t
-    Var name ->
+    Free name ->
       case getCtxBinding ctx name of
         Just binding -> Right $ binding
         Nothing -> Left $ NoType term
-    Abstr name binding body ->
-      case getType ctx body of
+    Idx idx ->
+      case getIdxBinding stack idx of
+        Just binding -> Right binding
+        Nothing -> Left $ NoType term
+    Abstr binding body ->
+      let stack' = pushIdxBinding stack binding
+      in case getType ctx stack' body of
         Right binding' -> Right $ Arrow binding binding'
         Left err -> Left err
     App func arg ->
       case func of
-        Abstr name binding body ->
-          case getType ctx arg of
+        Abstr binding body ->
+          case getType ctx stack arg of
             Right binding' ->
               case binding == binding' of
-                True -> getType ctx body
                 False -> Left $ BadArgType term arg binding' binding
+                True ->
+                  let stack' = pushIdxBinding stack binding
+                  in getType ctx stack' body
             Left err -> Left err
         _ -> Left $ NotAbstr term
 
 
 -- EVALUATION ---------------------------------------
 
-{- | 'subst "x" t1 t2' replaces every "x" with term 't1' in term 't2'. -}  
-subst :: Name -> Term -> Term -> Term
-subst name term term' =
-  case term' of
-    Base _ -> term'
+{- | Converts a term into a de Bruijn indexed version. -}
+indices :: Index -> Name -> Term -> Term
+indices idx name term =
+  case term of
+    Base _ -> term
     Option body ->
       let option = selection body
+          binding = selectionBinding body
       in case option of
-        None -> term'
-        Precisely body' -> subst name term body'
+        None -> term
+        Precisely body' ->
+          let body'' = indices idx name body'
+          in Option $ mkOptionTerm (Precisely body'') binding
+    Record body ->
+      let binding = recordBinding body
+          recordFields = fields body
+          indexField fld =
+            let fld' = indices idx name (field fld)
+                binding' = fieldBinding fld
+            in mkField fld' binding'
+          newFields = Set.map indexField recordFields
+      in Record $ mkRecordTerm (Set.toList newFields) binding
+    Free name'
+      | name == name' -> Idx idx
+      | otherwise -> term
+    Idx _ -> term
+    Abstr binding body ->
+      Abstr binding $ indices (idx + 1) name body
+    App func arg ->
+      App (indices idx name func) (indices idx name arg)
+
+{- | Substitute one term into another term. -}
+subst :: Index -> Term -> Term -> Term
+subst idx replacement target =
+  case target of
+    Base _ -> target
+    Option body ->
+      let option = selection body
+          binding = selectionBinding body
+      in case option of
+        None -> target
+        Precisely body' ->
+          let body'' = subst idx replacement body'
+          in Option $ mkOptionTerm (Precisely body'') binding
     Record body ->
       let binding = recordBinding body
           recordFields = fields body
           substField fld =
-            let value = field fld
+            let fld' = subst idx replacement (field fld)
                 binding' = fieldBinding fld
-                value' = subst name term value
-            in mkField value' binding'
-          newFields = Set.map substField recordFields 
+            in mkField fld' binding'
+          newFields = Set.map substField recordFields
       in Record $ mkRecordTerm (Set.toList newFields) binding
-    Var name'
-      | name == name' -> term
-      | otherwise -> term'
-    Abstr name' binding' body ->
-      Abstr name' binding' (subst name term body)
+    Free name -> target 
+    Idx i
+      | i == idx -> replacement
+      | otherwise -> target
+    Abstr binding body -> Abstr binding $ subst (idx + 1) replacement body
     App func arg ->
-      App (subst name term func) (subst name term arg)
+      App (subst idx replacement func) (subst idx replacement arg)
 
 {- | (Left-most) reduce a term one time. -}
 reduceOnce :: Context -> Term -> Either TypeError Term
 reduceOnce ctx term =
-  case getType ctx term of
+  case getType ctx initStack term of
     Left err -> Left err
     Right _ ->
       case term of
-        App (Abstr name binding body) term' ->
-          Right $ subst name term' body
+        App (Abstr _ body) arg ->
+          Right $ subst 1 arg body
         _ -> Right term
 
 {- | Reduce a term repeatedly until no more reductions can be done. -}
@@ -329,10 +405,10 @@ reduce ctx term =
   let reducedTerm = reduceOnce ctx term
   in case reducedTerm of
     Left err -> Left err
-    Right term' ->
-      case term' of
-        App (Abstr name binding body) term'' -> reduce ctx term'
-        _ -> Right term'
+    Right result ->
+      case result of
+        App (Abstr _ _) _ -> reduce ctx result
+        _ -> Right result
 
 
 -- EXAMPLES -----------------------------------------
@@ -381,26 +457,27 @@ bad_pRecord_optBool_term = Option pRecord_optBool -- Doesn't type check.
 
 ctx = mkCtx [("x", bool_type), ("y", bool_type)]
 
-x = Var "x"
-y = Var "y"
-f = Abstr "x" bool_type x
-app = App f x
+x = mkFree "x"
+y = mkFree "y"
+
+f = mkAbstr "x" bool_type x
+app = mkApp f x
 bad_app = App f tt_optBool_term -- Doesn't type check.
 
 x_optBool = mkOptionTerm (Precisely x) optBoolT
 x_optBool_term = Option x_optBool
-g = Abstr "x" bool_type x_optBool_term
-opt_app = App g tt_term
-bad_opt_app = App g sat_term -- Doesn't type check.
+g = mkAbstr "x" bool_type x_optBool_term
+opt_app = mkApp g tt_term
+bad_opt_app = mkApp g sat_term -- Doesn't type check.
 
 x_isP_field = mkField x isP_label
 xpRecord = mkRecordTerm [x_isP_field] pRecordT
 xpRecord_term = Record xpRecord
 
-h = Abstr "x" bool_type xpRecord_term
-record_app = App h tt_term
-bad_record_app = App h sat_term -- Doesn't type check.
+h = mkAbstr "x" bool_type xpRecord_term
+record_app = mkApp h tt_term
+bad_record_app = mkApp h sat_term -- Doesn't type check.
 
-k = Abstr "y" bool_type x
-abstr_x_from_k = Abstr "x" bool_type k
-capture_app = App abstr_x_from_k y -- Reducing causes capture.
+k = mkAbstr "y" bool_type x
+abstr_x_from_k = mkAbstr "x" bool_type k
+capture_app = mkApp abstr_x_from_k y -- Capture doesn't happen.

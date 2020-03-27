@@ -1,8 +1,8 @@
-module Typed.Naive where
+module Typed.Lambda where
 
-{- A naive interpreter for extended typed lambda calculus.
+{- A non-naive interpreter for extended typed lambda calculus.
 
-By "naive," I mean it does not avoid variable capture.
+By "non-naive," I mean it renames variables to avoid variable capture.
 
 This lambda calculus allows custom base types, options, and records,
 as well as the usual free variables, abstraction, and application.
@@ -119,11 +119,11 @@ instance Show Field where
 mkLabel :: Name -> Type -> Label
 mkLabel name binding = Label { label = name, labelBinding = binding }
 
-{- Creates a field with the given term and label -}
+{- | Creates a field with the given term and label -}
 mkField :: Term -> Label -> Field
 mkField t l = Field { field = t, fieldBinding = l }
 
-{- | A record type is a set of labels. -}
+{- A record type is a set of labels. -}
 data RecordType = RecordType {
     labels :: Set.Set Label
   } deriving (Eq, Ord)
@@ -213,6 +213,23 @@ getCtxBinding ctx name = Map.lookup name ctx
 
 -- TYPE CHECKING ------------------------------------
 
+{- | A simple container to hold a fresh name. -}
+data Names = Names {
+    counter :: Int
+  , fresh :: Name
+  } deriving (Show)
+
+{- | Initialize a 'Names' container. -}
+initialize :: unit -> Names
+initialize _ = Names { counter = 0, fresh = "a0" }
+
+{- | Freshen the name in the 'Names' container. -}
+freshen :: Names -> Names
+freshen names =
+  let new_counter = (counter names) + 1
+      new_name = "a" ++ (show new_counter)
+  in Names { counter = new_counter, fresh = new_name }
+
 {- | Types of errors that can occur in type checking. -}
 data TypeError =
     WrongFields RecordTerm
@@ -284,33 +301,76 @@ getType ctx term =
 
 -- EVALUATION ---------------------------------------
 
+{- | Renames all bound variables to avoid conflicts. -}
+rename :: Context -> Names -> Name -> Name -> Term -> (Context, Term)
+rename ctx names old new term =
+  case term of
+    Base _ -> (ctx, term)
+    Option body ->
+      let option = selection body
+          binding = selectionBinding body
+      in case option of
+        None -> (ctx, term)
+        Precisely body' ->
+          let (ctx', body'') = rename ctx names old new body'
+              opt = mkOptionTerm (Precisely body'') binding
+          in (ctx, Option opt)
+    Record body ->
+      let binding = recordBinding body
+          recordFields = fields body
+          renameField (acc, fieldSet) fld =
+            let value = field fld
+                (acc', body') = rename acc names old new value
+                binding'' = fieldBinding fld
+                newField = mkField body' binding''
+                newFieldSet = Set.insert newField fieldSet
+            in (acc', newFieldSet)
+          (ctx', newFields) = 
+            Set.foldl renameField (ctx, Set.empty) recordFields
+          record = mkRecordTerm (Set.toList newFields) binding
+      in (ctx', Record record)
+    Var name'
+      | name' == old -> (ctx, Var new)
+      | otherwise -> (ctx, term)
+    Abstr name' binding body ->
+      let new' = fresh names
+          names' = freshen names
+          ctx' = Map.insert new' binding ctx
+          (ctx'', body') = rename ctx' names' name' new' body
+          (_, body'') = rename ctx'' names' old new body'
+      in (ctx'', Abstr new' binding body'')
+    App func arg ->
+      let (ctx', func') = rename ctx names old new func
+          (ctx'', arg') = rename ctx' names old new arg
+      in (ctx'', App func' arg')
+
 {- | 'subst "x" t1 t2' replaces every "x" with term 't1' in term 't2'. -}  
 subst :: Name -> Term -> Term -> Term
-subst name term term' =
+subst n term term' =
   case term' of
     Base _ -> term'
     Option body ->
       let option = selection body
       in case option of
         None -> term'
-        Precisely body' -> subst name term body'
+        Precisely body' -> subst n term body'
     Record body ->
       let binding = recordBinding body
           recordFields = fields body
           substField fld =
             let value = field fld
                 binding' = fieldBinding fld
-                value' = subst name term value
+                value' = subst n term value
             in mkField value' binding'
           newFields = Set.map substField recordFields 
       in Record $ mkRecordTerm (Set.toList newFields) binding
-    Var name'
-      | name == name' -> term
+    Var n'
+      | n == n' -> term
       | otherwise -> term'
-    Abstr name' binding' body ->
-      Abstr name' binding' (subst name term body)
+    Abstr n' binding' body ->
+      Abstr n' binding' (subst n term body)
     App func arg ->
-      App (subst name term func) (subst name term arg)
+      App (subst n term func) (subst n term arg)
 
 {- | (Left-most) reduce a term one time. -}
 reduceOnce :: Context -> Term -> Either TypeError Term
@@ -324,15 +384,22 @@ reduceOnce ctx term =
         _ -> Right term
 
 {- | Reduce a term repeatedly until no more reductions can be done. -}
-reduce :: Context -> Term -> Either TypeError Term
-reduce ctx term =
+reduceFixpoint :: Context -> Term -> Either TypeError Term
+reduceFixpoint ctx term =
   let reducedTerm = reduceOnce ctx term
   in case reducedTerm of
     Left err -> Left err
     Right term' ->
       case term' of
-        App (Abstr name binding body) term'' -> reduce ctx term'
+        App (Abstr _ _ _) _ -> reduceFixpoint ctx term'
         _ -> Right term'
+
+{- | Rename bound variables, then reduce. -}
+reduce :: Context -> Term -> Either TypeError Term
+reduce ctx term =
+  let names = initialize ()
+      (ctx', renamed_term) = rename ctx names "" "" term
+  in reduceFixpoint ctx' renamed_term
 
 
 -- EXAMPLES -----------------------------------------
@@ -383,6 +450,8 @@ ctx = mkCtx [("x", bool_type), ("y", bool_type)]
 
 x = Var "x"
 y = Var "y"
+z = Var "z"
+
 f = Abstr "x" bool_type x
 app = App f x
 bad_app = App f tt_optBool_term -- Doesn't type check.
@@ -403,4 +472,4 @@ bad_record_app = App h sat_term -- Doesn't type check.
 
 k = Abstr "y" bool_type x
 abstr_x_from_k = Abstr "x" bool_type k
-capture_app = App abstr_x_from_k y -- Reducing causes capture.
+capture_app = App abstr_x_from_k y -- Capture doesn't happen.
