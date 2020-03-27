@@ -1,4 +1,4 @@
-module Typed.Types where
+module Extended.Types where
 
 {- This module provides finite base types, records, and options. 
 

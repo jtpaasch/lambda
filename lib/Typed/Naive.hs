@@ -117,8 +117,8 @@ reduceOnce ctx term =
     Left err -> Left err
     Right _ ->
       case term of
-        App (Abstr name binding body) term' ->
-          Right $ subst ctx name binding term' body
+        App (Abstr name binding body) arg ->
+          Right $ subst name binding arg body
         _ -> Right term
 
 {- | Reduce a term repeatedly until no more reductions can be done. -}
